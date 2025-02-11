@@ -9,3 +9,6 @@ chord_detection:
   hop_length: 512
 transcription:
   model: "large"
+logger:
+  console_level: "WARNING"
+  file_level: "DEBUG"  

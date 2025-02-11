@@ -5,7 +5,7 @@ from docx.shared import Pt
 def align_chords_to_phrase(phrase: dict, chord_segments: list) -> str:
     """
     Given a phrase (with 'start', 'end', and 'text') and a list of chord segments (with 'start' and 'chord')
-    that fall within the phrase interval, returns a string (of the same length as the phrase text) with the chord labels
+    that fall within the phrase interval, returns a string (of the same length as the phrase text) with chord labels
     positioned proportionally.
 
     :param phrase: Dictionary with keys 'start', 'end', and 'text'.

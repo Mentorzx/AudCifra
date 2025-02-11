@@ -13,46 +13,27 @@ from doc_generator.word_doc_generator import (
 )
 from utils.logger import get_logger
 
-logger = get_logger(__name__)
-
 
 def load_config(config_path: str) -> dict:
-    """
-    Loads the configuration file.
-
-    :param config_path: Path to the configuration file.
-    :return: Configuration dictionary.
-    """
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def process_music(file_path: str, config: dict) -> None:
-    """
-    Processes an audio file by:
-      1. Transcribing the entire audio and grouping segments into phrases based on uppercase.
-      2. Detecting chord segments with timestamps.
-      3. Associating chords to each phrase and positioning chord labels proportionally.
-      4. Adding unassigned chord segments to the last phrase.
-      5. Generating a Word document with the desired format.
-
-    :param file_path: Path to the audio file.
-    :param config: Configuration dictionary.
-    """
-    logger.info(f"Processing: {file_path}")
+def process_music(file_path: str, config: dict, logger) -> None:
+    logger.debug(f"Processing: {file_path}")
     audio_data = get_audio_data(file_path)
     if config.get("noise_removal", {}).get("enabled", False):
         audio_data = remove_noise(
-            audio_data, level=config["noise_removal"].get("level", 0.8)
+            audio_data, level=config["noise_removal"].get("level", 0.4)
         )
     transcription_segments = transcribe_audio_full(
-        audio_data, model_name=config["transcription"].get("model", "small")
+        audio_data, model_name=config["transcription"].get("model", "base")
     )
     phrases = segments_to_phrases(transcription_segments)
     chord_segments = detect_chord_segments(
         audio_data,
-        sensitivity=config["chord_detection"].get("sensitivity", 0.7),
-        onset_delta=config["chord_detection"].get("onset_delta", 0.07),
+        sensitivity=config["chord_detection"].get("sensitivity", 0.9),
+        onset_delta=config["chord_detection"].get("onset_delta", 0.5),
         hop_length=config["chord_detection"].get("hop_length", 512),
     )
     phrase_chord_data = []
@@ -73,9 +54,12 @@ def process_music(file_path: str, config: dict) -> None:
         )
     assigned = []
     for phrase in phrases:
-        for seg in chord_segments:
-            if seg["start"] >= phrase["start"] and seg["start"] <= phrase["end"]:
-                assigned.append(seg)
+        assigned.extend(
+            seg
+            for seg in chord_segments
+            if seg["start"] >= phrase["start"]
+            and seg["start"] <= phrase["end"]
+        )
     unassigned = [seg for seg in chord_segments if seg not in assigned]
     if phrase_chord_data and unassigned:
         last_phrase = phrase_chord_data[-1]
@@ -90,7 +74,7 @@ def process_music(file_path: str, config: dict) -> None:
         last_phrase["chord_line"] = (
             last_phrase["chord_line"].rstrip() + " " + extra_line.strip()
         )
-    output_filename = os.path.splitext(os.path.basename(file_path))[0] + ".docx"
+    output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}.docx"
     output_path = os.path.join(
         config.get("output_folder", "data/outputs/"), output_filename
     )
@@ -99,10 +83,12 @@ def process_music(file_path: str, config: dict) -> None:
 
 
 async def main() -> None:
-    """
-    Main asynchronous function that loads configuration, collects audio files, and processes each file concurrently.
-    """
     config = load_config("config.yml")
+    logger_config = config.get("logger", {})
+    console_level = logger_config.get("console_level", "WARNING")
+    file_level = logger_config.get("file_level", "DEBUG")
+    logger = get_logger(__name__, console_level=console_level, file_level=file_level)
+
     audio_folder = config.get("audio_folder", "data/musics/")
     files = [
         os.path.join(audio_folder, f)
@@ -115,7 +101,7 @@ async def main() -> None:
     max_workers = max(1, num_cores - 1)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         tasks = [
-            loop.run_in_executor(executor, process_music, file, config)
+            loop.run_in_executor(executor, process_music, file, config, logger)
             for file in files
         ]
         await asyncio.gather(*tasks)
