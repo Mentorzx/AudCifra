@@ -1,0 +1,11 @@
+audio_folder: "data/musics/"
+output_folder: "data/outputs/"
+noise_removal:
+  enabled: true
+  level: 0.4
+chord_detection:
+  sensitivity: 0.7
+  onset_delta: 0.5
+  hop_length: 512
+transcription:
+  model: "large"
