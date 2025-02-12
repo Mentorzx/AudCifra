@@ -47,7 +47,7 @@ def detect_chord_segments(
                 best_similarity = similarity
                 best_chord = chord
         if best_similarity < sensitivity:
-            continue  # Skip segment if similarity is too low (treated as no chord detected)
+            continue
         start_time_sec = start_frame * hop_length / sr
         end_time_sec = end_frame * hop_length / sr
         segments.append(

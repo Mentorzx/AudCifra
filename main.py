@@ -15,11 +15,33 @@ from utils.logger import get_logger
 
 
 def load_config(config_path: str) -> dict:
+    """
+    Loads a YAML configuration file and returns the configuration as a dictionary.
+
+    Parameters:
+        config_path (str): The file path to the YAML configuration file.
+
+    Returns:
+        dict: The configuration dictionary.
+    """
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def process_music(file_path: str, config: dict, logger) -> None:
+    """
+    Processes a music file by extracting audio data, performing optional noise removal,
+    transcribing the audio, detecting chord segments, aligning chords to the corresponding phrases,
+    and generating a Word document with the chord and lyric data.
+
+    This function also removes chord segments detected before the start of the first phrase
+    (i.e. the intro is ignored).
+
+    Parameters:
+        file_path (str): The path to the music file.
+        config (dict): The configuration dictionary.
+        logger: A logger instance for logging messages.
+    """
     logger.debug(f"Processing: {file_path}")
     audio_data = get_audio_data(file_path)
     if config.get("noise_removal", {}).get("enabled", False):
@@ -36,12 +58,17 @@ def process_music(file_path: str, config: dict, logger) -> None:
         onset_delta=config["chord_detection"].get("onset_delta", 0.5),
         hop_length=config["chord_detection"].get("hop_length", 512),
     )
+    if phrases:
+        first_phrase_start = phrases[0]["start"]
+        chord_segments = [
+            seg for seg in chord_segments if seg["start"] >= first_phrase_start
+        ]
     phrase_chord_data = []
     for phrase in phrases:
         segs_in_phrase = [
             seg
             for seg in chord_segments
-            if seg["start"] >= phrase["start"] and seg["start"] <= phrase["end"]
+            if phrase["start"] <= seg["start"] <= phrase["end"]
         ]
         chord_line = align_chords_to_phrase(phrase, segs_in_phrase)
         phrase_chord_data.append(
@@ -57,8 +84,7 @@ def process_music(file_path: str, config: dict, logger) -> None:
         assigned.extend(
             seg
             for seg in chord_segments
-            if seg["start"] >= phrase["start"]
-            and seg["start"] <= phrase["end"]
+            if phrase["start"] <= seg["start"] <= phrase["end"]
         )
     unassigned = [seg for seg in chord_segments if seg not in assigned]
     if phrase_chord_data and unassigned:
@@ -83,12 +109,18 @@ def process_music(file_path: str, config: dict, logger) -> None:
 
 
 async def main() -> None:
+    """
+    Main asynchronous function that loads the configuration, sets up logging,
+    locates all audio files in the specified folder, and processes each music file in parallel
+    using a ThreadPoolExecutor.
+
+    This function uses asyncio to run the processing tasks concurrently.
+    """
     config = load_config("config.yml")
     logger_config = config.get("logger", {})
     console_level = logger_config.get("console_level", "WARNING")
     file_level = logger_config.get("file_level", "DEBUG")
     logger = get_logger(__name__, console_level=console_level, file_level=file_level)
-
     audio_folder = config.get("audio_folder", "data/musics/")
     files = [
         os.path.join(audio_folder, f)

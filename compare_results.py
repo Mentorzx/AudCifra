@@ -14,10 +14,19 @@ import yaml
 from docx import Document
 from fuzzywuzzy import fuzz
 
+contour_colorbar = None
+heatmap_colorbar = None
+
 
 def get_logger(name: str) -> logging.Logger:
     """
     Creates and returns a logger with a standardized format.
+
+    Parameters:
+        name (str): Name for the logger.
+
+    Returns:
+        logging.Logger: A configured logger.
     """
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
@@ -47,6 +56,9 @@ class ConfigManager:
     def load_config(self) -> dict:
         """
         Loads and returns the configuration from a YAML file.
+
+        Returns:
+            dict: The configuration dictionary.
         """
         if not os.path.exists(self.config_path):
             logger.error(f"Configuration file not found: {self.config_path}")
@@ -54,9 +66,12 @@ class ConfigManager:
         with open(self.config_path, "r", encoding="utf-8") as file:
             return yaml.safe_load(file)
 
-    def save_config(self, config: dict) -> None:
+    def save_config(self, config) -> None:
         """
         Saves the given configuration (or the current configuration if None) to the YAML file.
+
+        Parameters:
+            config (dict, optional): The configuration to save. Defaults to None.
         """
         if not config:
             config = self.config
@@ -77,6 +92,12 @@ class ChordExtractor:
     def extract_chords_from_docx(cls, file_path: str) -> list:
         """
         Returns a list of chords extracted from the DOCX file at the given path.
+
+        Parameters:
+            file_path (str): The path to the DOCX file.
+
+        Returns:
+            list: A list of chord strings.
         """
         if not os.path.exists(file_path):
             logger.warning(f"File not found: {file_path}")
@@ -91,16 +112,33 @@ class ChordExtractor:
 
 class ScoreEvaluator:
     """
-    Computes a score by comparing generated chords with a reference.
+    Computes a score by comparing generated chords with a reference list.
+
+    The score is computed using the formula:
+
+        score = (3 * number of correct matches) - (2 * false positives) - (2 * false negatives)
+
+    A correct match is counted if the fuzzy similarity between a reference chord and a generated chord exceeds 75.
+    This function also logs:
+      - The full lists of chords compared.
+      - The number of correct matches.
+      - The number of false positives.
+      - The number of false negatives.
+      - The final computed score.
+    If either list is empty, -100 is returned.
     """
 
     @staticmethod
     def evaluate(reference: list, generated: list) -> float:
         """
-        Returns a score computed as:
-            score = (3 * number of correct matches) - (2 * false positives) - (2 * false negatives)
-        A correct match is counted if the fuzzy similarity exceeds 80.
-        Returns -100 if either list is empty.
+        Compares the reference and generated chord lists and returns a score.
+
+        Parameters:
+            reference (list): List of reference chords.
+            generated (list): List of generated chords.
+
+        Returns:
+            float: The computed score. Returns -100 if either list is empty.
         """
         if not reference or not generated:
             return -100.0
@@ -109,7 +147,9 @@ class ScoreEvaluator:
         )
         false_positives = max(0, len(generated) - len(reference))
         false_negatives = max(0, len(reference) - len(generated))
-        score = (3 * correct_matches) - (false_positives) - (false_negatives)
+        score = (3 * correct_matches) - (2 * false_positives) - (2 * false_negatives)
+        logger.info(f"Reference chords: {reference}")
+        logger.info(f"Generated chords: {generated}")
         logger.info(
             f"Score Breakdown - Correct: {correct_matches}, False Positives: {false_positives}, False Negatives: {false_negatives}"
         )
@@ -120,6 +160,7 @@ class ScoreEvaluator:
 class OptimizationRunner:
     """
     Encapsulates the optimization process using Optuna.
+
     Updates the configuration, runs the main process, and computes the objective score.
     """
 
@@ -133,7 +174,9 @@ class OptimizationRunner:
     def run_main_script(self) -> bool:
         """
         Executes the main process (main.py) as a subprocess.
-        Returns True if successful, False otherwise.
+
+        Returns:
+            bool: True if the process completes successfully, False otherwise.
         """
         process = subprocess.run(
             ["python", "main.py"],
@@ -149,8 +192,10 @@ class OptimizationRunner:
 
     def get_latest_output_file(self) -> str:
         """
-        Returns the path to the most recently modified file in the results folder.
-        Returns an empty string if no file is found.
+        Retrieves the most recently modified file from the results folder.
+
+        Returns:
+            str: The path to the latest output file, or an empty string if none exist.
         """
         try:
             files = sorted(
@@ -168,8 +213,16 @@ class OptimizationRunner:
     def objective(self, trial: optuna.Trial) -> float:
         """
         The objective function for the Optuna study.
-        Randomly suggests values for hyperparameters, updates the configuration,
-        runs the main process, and returns the computed score.
+
+        Randomly suggests values for hyperparameters (Sensitivity: [0,1], Onset Delta: [0,1],
+        Hop Length: multiples of 64 between 64 and 512), updates the configuration, runs the main process,
+        and returns the computed score. If the main process fails or no output file is generated, returns -100.
+
+        Parameters:
+            trial (optuna.trial.FrozenTrial): The current trial object.
+
+        Returns:
+            float: The computed score.
         """
         sensitivity = trial.suggest_float("sensitivity", 0.0, 1.0)
         onset_delta = trial.suggest_float("onset_delta", 0.0, 1.0)
@@ -194,7 +247,15 @@ class OptimizationRunner:
 
 def create_plots():
     """
-    Creates and returns a tuple (fig, axes) containing the matplotlib figure and a dictionary of axes.
+    Creates and returns the matplotlib figure and a dictionary of axes for the various plots.
+
+    The layout consists of:
+      - Row 1: Score Evolution, Parameter Importance, Parallel Coordinates.
+      - Row 2: Three slice plots (Sensitivity vs Score, Onset Delta vs Score, Hop Length vs Score),
+               a Contour Plot (Sensitivity vs Onset Delta), and a Hyperparameter Heatmap.
+
+    Returns:
+        tuple: (fig, axes) where fig is the matplotlib Figure and axes is a dictionary of Axes objects.
     """
     fig = plt.figure(figsize=(18, 10))
     gs = fig.add_gridspec(2, 3)
@@ -212,24 +273,14 @@ def create_plots():
     return fig, axes
 
 
-# Global colorbar variables for contour and heatmap
-contour_colorbar = None
-heatmap_colorbar = None
-
-# Global flag to indicate if the figure is closing
-is_closing = False
-
-
 def update_score_evolution(ax, trial_numbers, scores):
     """
-    Updates the score evolution plot.
-
-    Clears the given axes and plots the trial numbers against the scores.
+    Updates the Score Evolution plot with the latest trial data.
 
     Parameters:
-        ax (matplotlib.axes.Axes): The axes to update.
+        ax (matplotlib.axes.Axes): The axes object for the score evolution plot.
         trial_numbers (list): List of trial numbers.
-        scores (list): List of score values corresponding to the trials.
+        scores (list): List of corresponding score values.
     """
     ax.clear()
     ax.plot(trial_numbers, scores, marker="o")
@@ -240,14 +291,12 @@ def update_score_evolution(ax, trial_numbers, scores):
 
 def update_param_importance(ax, study):
     """
-    Updates the parameter importance plot.
+    Updates the Parameter Importance plot with the importance computed by Optuna.
 
-    Clears the given axes and, if enough trial data exists, plots the parameter importance
-    computed by Optuna. If there is insufficient data or an error occurs, an appropriate
-    message is displayed.
+    If there is insufficient trial data or no importance computed, displays a message.
 
     Parameters:
-        ax (matplotlib.axes.Axes): The axes to update.
+        ax (matplotlib.axes.Axes): The axes object for the parameter importance plot.
         study (optuna.study.Study): The Optuna study containing trial data.
     """
     ax.clear()
@@ -269,18 +318,16 @@ def update_param_importance(ax, study):
 
 def update_parallel_coords(ax, trial_numbers, sv, od, hl):
     """
-    Updates the parallel coordinates plot.
+    Updates the Parallel Coordinates plot with normalized hyperparameter values.
 
-    Clears the given axes and plots the normalized hyperparameter values for each trial.
-    The normalization for sensitivity and onset_delta is identity (since their range is [0,1]),
-    and for hop_length it is normalized to the range [0,1] from [64,512].
+    Sensitivity and Onset Delta are assumed to be in [0,1]. Hop Length is normalized from [64,512].
 
     Parameters:
-        ax (matplotlib.axes.Axes): The axes to update.
+        ax (matplotlib.axes.Axes): The axes for the parallel coordinates plot.
         trial_numbers (list): List of trial numbers.
         sv (list): List of sensitivity values.
-        od (list): List of onset_delta values.
-        hl (list): List of hop_length values.
+        od (list): List of onset delta values.
+        hl (list): List of hop length values.
     """
     ax.clear()
     for i in range(len(trial_numbers)):
@@ -295,18 +342,18 @@ def update_parallel_coords(ax, trial_numbers, sv, od, hl):
 
 def update_slice_plots(axes, sv, od, hl, scores):
     """
-    Updates the three slice plots that show the relationship between each hyperparameter and the score.
+    Updates the slice plots showing the relationship between each hyperparameter and the score.
 
-    Each slice plot is cleared and updated with a scatter plot:
-      - "slice1" plots Sensitivity vs. Score (red markers).
-      - "slice2" plots Onset Delta vs. Score (blue markers).
-      - "slice3" plots Hop Length vs. Score (green markers).
+    Three scatter plots are updated:
+      - Sensitivity vs. Score (red)
+      - Onset Delta vs. Score (blue)
+      - Hop Length vs. Score (green)
 
     Parameters:
-        axes (dict): Dictionary containing the axes for "slice1", "slice2", and "slice3".
+        axes (dict): Dictionary with axes for "slice1", "slice2", and "slice3".
         sv (list): List of sensitivity values.
-        od (list): List of onset_delta values.
-        hl (list): List of hop_length values.
+        od (list): List of onset delta values.
+        hl (list): List of hop length values.
         scores (list): List of score values.
     """
     axes["slice1"].clear()
@@ -330,17 +377,17 @@ def update_slice_plots(axes, sv, od, hl, scores):
 
 def update_contour_plot(ax, sv, od, scores, contour_cb):
     """
-    Updates the contour plot based on sensitivity and onset_delta.
+    Updates the contour plot (Sensitivity vs. Onset Delta) based on the provided data.
 
-    If there are not enough data points (<= 5), a message is displayed.
-    Otherwise, a contour plot is drawn using tricontourf and the existing colorbar is updated.
+    If fewer than 6 data points exist, displays a "Not enough data" message.
+    Otherwise, draws a contour plot using tricontourf and updates the existing colorbar.
 
     Parameters:
-        ax (matplotlib.axes.Axes): The axes to update.
+        ax (matplotlib.axes.Axes): The axes for the contour plot.
         sv (list): List of sensitivity values.
-        od (list): List of onset_delta values.
+        od (list): List of onset delta values.
         scores (list): List of score values.
-        contour_cb: The existing contour colorbar object (or None).
+        contour_cb: Existing contour colorbar object (or None).
 
     Returns:
         The updated contour colorbar object.
@@ -354,7 +401,7 @@ def update_contour_plot(ax, sv, od, scores, contour_cb):
     z = np.array(scores)
     try:
         cont = ax.tricontourf(x, y, z, levels=14, cmap="viridis")
-        if contour_cb is None:
+        if not contour_cb:
             contour_cb = plt.gcf().colorbar(cont, ax=ax)
         else:
             contour_cb.update_normal(cont)
@@ -368,17 +415,18 @@ def update_contour_plot(ax, sv, od, scores, contour_cb):
 
 def update_heatmap(ax, sv, od, scores, heatmap_cb):
     """
-    Updates the heatmap of hyperparameters vs. score.
+    Updates the hyperparameter heatmap.
 
-    The heatmap is drawn as a scatter plot with the "coolwarm" colormap, where red indicates higher scores
-    and blue indicates lower scores. If a heatmap colorbar already exists, it is updated.
+    Displays a scatter plot with Sensitivity on the x-axis and Onset Delta on the y-axis.
+    The point color (using the "coolwarm" colormap) represents the score, where red indicates higher scores
+    and blue indicates lower scores. Updates the existing colorbar if available.
 
     Parameters:
-        ax (matplotlib.axes.Axes): The axes to update.
+        ax (matplotlib.axes.Axes): The axes for the heatmap.
         sv (list): List of sensitivity values.
-        od (list): List of onset_delta values.
+        od (list): List of onset delta values.
         scores (list): List of score values.
-        heatmap_cb: The existing heatmap colorbar object (or None).
+        heatmap_cb: Existing heatmap colorbar object (or None).
 
     Returns:
         The updated heatmap colorbar object.
@@ -388,7 +436,7 @@ def update_heatmap(ax, sv, od, scores, heatmap_cb):
     ax.set_title("Hyperparameter Heatmap")
     ax.set_xlabel("Sensitivity")
     ax.set_ylabel("Onset Delta")
-    if heatmap_cb is None:
+    if not heatmap_cb:
         heatmap_cb = plt.gcf().colorbar(
             sc_plot, ax=ax, label="Score (red=high, blue=low)"
         )
@@ -405,7 +453,7 @@ def update_all_plots(
     hyper_data: dict,
 ):
     """
-    Updates all plots with the latest trial data.
+    Updates all plots with the latest trial data and logs key evaluation details.
 
     The hyper_data dictionary must contain the following keys:
       'trial_numbers', 'scores', 'sensitivity_values', 'onset_delta_values', 'hop_length_values', 'times'.
@@ -414,13 +462,24 @@ def update_all_plots(
       - The Score Evolution plot.
       - The Parameter Importance plot.
       - The Parallel Coordinates plot.
-      - The three slice plots.
-      - The Contour plot.
-      - The Heatmap of hyperparameters vs. score.
+      - The three slice plots (individual scatter plots for each hyperparameter vs. score).
+      - The Contour Plot (Sensitivity vs. Onset Delta) and updates its colorbar.
+      - The Hyperparameter Heatmap (scatter plot where the color represents the score, using the "coolwarm" colormap).
+
+    The ScoreEvaluator.evaluate function (called elsewhere) logs the full lists compared as well as the number
+    of correct matches, false positives, and false negatives.
+
+    Parameters:
+        axes (dict): Dictionary of matplotlib axes for each plot.
+        study (optuna.study.Study): The Optuna study object.
+        trial (optuna.trial.FrozenTrial): The most recent trial.
+        contour_cb: The existing contour colorbar object (or None).
+        hyper_data (dict): A dictionary containing trial data lists.
 
     Returns:
         The updated contour colorbar object.
     """
+    global heatmap_colorbar
     tn = hyper_data["trial_numbers"]
     sc = hyper_data["scores"]
     sv = hyper_data["sensitivity_values"]
@@ -432,10 +491,8 @@ def update_all_plots(
     update_parallel_coords(axes["parallel_coords"], tn, sv, od, hl)
     update_slice_plots(axes, sv, od, hl, sc)
     contour_cb = update_contour_plot(axes["contour"], sv, od, sc, contour_cb)
-    global heatmap_colorbar
     heatmap_colorbar = update_heatmap(axes["heatmap"], sv, od, sc, heatmap_colorbar)
-    plt.gcf().canvas.draw_idle()
-    
+
     return contour_cb
 
 
@@ -457,7 +514,6 @@ def main():
     config_path = "config.yml"
     results_folder = "data/outputs/"
     reference_file = "data/reference/Braço Forte.docx"
-
     config_manager = ConfigManager(config_path)
     optimization_runner = OptimizationRunner(
         config_manager, results_folder, reference_file
