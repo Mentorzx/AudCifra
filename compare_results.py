@@ -220,6 +220,183 @@ heatmap_colorbar = None
 is_closing = False
 
 
+def update_score_evolution(ax, trial_numbers, scores):
+    """
+    Updates the score evolution plot.
+
+    Clears the given axes and plots the trial numbers against the scores.
+
+    Parameters:
+        ax (matplotlib.axes.Axes): The axes to update.
+        trial_numbers (list): List of trial numbers.
+        scores (list): List of score values corresponding to the trials.
+    """
+    ax.clear()
+    ax.plot(trial_numbers, scores, marker="o")
+    ax.set_title("Score Evolution")
+    ax.set_xlabel("Trial")
+    ax.set_ylabel("Score")
+
+
+def update_param_importance(ax, study):
+    """
+    Updates the parameter importance plot.
+
+    Clears the given axes and, if enough trial data exists, plots the parameter importance
+    computed by Optuna. If there is insufficient data or an error occurs, an appropriate
+    message is displayed.
+
+    Parameters:
+        ax (matplotlib.axes.Axes): The axes to update.
+        study (optuna.study.Study): The Optuna study containing trial data.
+    """
+    ax.clear()
+    if len(study.trials) <= 1:
+        ax.text(0.5, 0.5, "Not enough data", ha="center", va="center")
+        return
+    try:
+        import optuna.importance as oi
+
+        if imp := oi.get_param_importances(study):
+            ax.bar(list(imp.keys()), list(imp.values()), color="orange")
+            ax.set_title("Parameter Importance")
+            ax.set_ylabel("Importance")
+        else:
+            ax.text(0.5, 0.5, "No importance computed", ha="center", va="center")
+    except Exception as e:
+        ax.text(0.5, 0.5, f"Error: {e}", ha="center", va="center")
+
+
+def update_parallel_coords(ax, trial_numbers, sv, od, hl):
+    """
+    Updates the parallel coordinates plot.
+
+    Clears the given axes and plots the normalized hyperparameter values for each trial.
+    The normalization for sensitivity and onset_delta is identity (since their range is [0,1]),
+    and for hop_length it is normalized to the range [0,1] from [64,512].
+
+    Parameters:
+        ax (matplotlib.axes.Axes): The axes to update.
+        trial_numbers (list): List of trial numbers.
+        sv (list): List of sensitivity values.
+        od (list): List of onset_delta values.
+        hl (list): List of hop_length values.
+    """
+    ax.clear()
+    for i in range(len(trial_numbers)):
+        norm_s = sv[i]
+        norm_o = od[i]
+        norm_h = (hl[i] - 64) / (512 - 64)
+        ax.plot([0, 1, 2], [norm_s, norm_o, norm_h], marker="o", alpha=0.5)
+    ax.set_xticks([0, 1, 2])
+    ax.set_xticklabels(["Sensitivity", "Onset Delta", "Hop Length"])
+    ax.set_title("Parallel Coordinates")
+
+
+def update_slice_plots(axes, sv, od, hl, scores):
+    """
+    Updates the three slice plots that show the relationship between each hyperparameter and the score.
+
+    Each slice plot is cleared and updated with a scatter plot:
+      - "slice1" plots Sensitivity vs. Score (red markers).
+      - "slice2" plots Onset Delta vs. Score (blue markers).
+      - "slice3" plots Hop Length vs. Score (green markers).
+
+    Parameters:
+        axes (dict): Dictionary containing the axes for "slice1", "slice2", and "slice3".
+        sv (list): List of sensitivity values.
+        od (list): List of onset_delta values.
+        hl (list): List of hop_length values.
+        scores (list): List of score values.
+    """
+    axes["slice1"].clear()
+    axes["slice1"].scatter(sv, scores, color="red")
+    axes["slice1"].set_title("Sensitivity vs Score")
+    axes["slice1"].set_xlabel("Sensitivity")
+    axes["slice1"].set_ylabel("Score")
+
+    axes["slice2"].clear()
+    axes["slice2"].scatter(od, scores, color="blue")
+    axes["slice2"].set_title("Onset Delta vs Score")
+    axes["slice2"].set_xlabel("Onset Delta")
+    axes["slice2"].set_ylabel("Score")
+
+    axes["slice3"].clear()
+    axes["slice3"].scatter(hl, scores, color="green")
+    axes["slice3"].set_title("Hop Length vs Score")
+    axes["slice3"].set_xlabel("Hop Length")
+    axes["slice3"].set_ylabel("Score")
+
+
+def update_contour_plot(ax, sv, od, scores, contour_cb):
+    """
+    Updates the contour plot based on sensitivity and onset_delta.
+
+    If there are not enough data points (<= 5), a message is displayed.
+    Otherwise, a contour plot is drawn using tricontourf and the existing colorbar is updated.
+
+    Parameters:
+        ax (matplotlib.axes.Axes): The axes to update.
+        sv (list): List of sensitivity values.
+        od (list): List of onset_delta values.
+        scores (list): List of score values.
+        contour_cb: The existing contour colorbar object (or None).
+
+    Returns:
+        The updated contour colorbar object.
+    """
+    ax.clear()
+    if len(sv) <= 5:
+        ax.text(0.5, 0.5, "Not enough data", ha="center", va="center")
+        return contour_cb
+    x = np.array(sv)
+    y = np.array(od)
+    z = np.array(scores)
+    try:
+        cont = ax.tricontourf(x, y, z, levels=14, cmap="viridis")
+        if contour_cb is None:
+            contour_cb = plt.gcf().colorbar(cont, ax=ax)
+        else:
+            contour_cb.update_normal(cont)
+    except Exception as e:
+        ax.text(0.5, 0.5, f"Error: {e}", ha="center", va="center")
+    ax.set_title("Contour Plot (Sensitivity, Onset Delta)")
+    ax.set_xlabel("Sensitivity")
+    ax.set_ylabel("Onset Delta")
+    return contour_cb
+
+
+def update_heatmap(ax, sv, od, scores, heatmap_cb):
+    """
+    Updates the heatmap of hyperparameters vs. score.
+
+    The heatmap is drawn as a scatter plot with the "coolwarm" colormap, where red indicates higher scores
+    and blue indicates lower scores. If a heatmap colorbar already exists, it is updated.
+
+    Parameters:
+        ax (matplotlib.axes.Axes): The axes to update.
+        sv (list): List of sensitivity values.
+        od (list): List of onset_delta values.
+        scores (list): List of score values.
+        heatmap_cb: The existing heatmap colorbar object (or None).
+
+    Returns:
+        The updated heatmap colorbar object.
+    """
+    ax.clear()
+    sc_plot = ax.scatter(sv, od, c=scores, cmap="coolwarm", s=100)
+    ax.set_title("Hyperparameter Heatmap")
+    ax.set_xlabel("Sensitivity")
+    ax.set_ylabel("Onset Delta")
+    if heatmap_cb is None:
+        heatmap_cb = plt.gcf().colorbar(
+            sc_plot, ax=ax, label="Score (red=high, blue=low)"
+        )
+    else:
+        heatmap_cb.update_normal(sc_plot)
+    return heatmap_cb
+
+
 def update_all_plots(
     axes: dict,
     study: optuna.study.Study,
@@ -230,115 +407,35 @@ def update_all_plots(
     """
     Updates all plots with the latest trial data.
 
-    hyper_data is a dictionary containing:
-      'trial_numbers', 'scores', 'sensitivity_values', 'onset_delta_values', 'hop_length_values', 'times'
+    The hyper_data dictionary must contain the following keys:
+      'trial_numbers', 'scores', 'sensitivity_values', 'onset_delta_values', 'hop_length_values', 'times'.
 
-    The heatmap uses the "coolwarm" colormap where red indicates higher scores and blue lower.
+    This function sequentially updates:
+      - The Score Evolution plot.
+      - The Parameter Importance plot.
+      - The Parallel Coordinates plot.
+      - The three slice plots.
+      - The Contour plot.
+      - The Heatmap of hyperparameters vs. score.
 
-    Returns the updated contour colorbar.
+    Returns:
+        The updated contour colorbar object.
     """
-    global contour_colorbar, heatmap_colorbar
     tn = hyper_data["trial_numbers"]
     sc = hyper_data["scores"]
     sv = hyper_data["sensitivity_values"]
     od = hyper_data["onset_delta_values"]
     hl = hyper_data["hop_length_values"]
-    t = hyper_data["times"]
 
-    axes["score_evolution"].clear()
-    axes["score_evolution"].plot(tn, sc, marker="o")
-    axes["score_evolution"].set_title("Score Evolution")
-    axes["score_evolution"].set_xlabel("Trial")
-    axes["score_evolution"].set_ylabel("Score")
-
-    axes["param_importance"].clear()
-    if len(study.trials) > 1:
-        try:
-            import optuna.importance as oi
-
-            if imp := oi.get_param_importances(study):
-                names = list(imp.keys())
-                values = list(imp.values())
-                axes["param_importance"].bar(names, values, color="orange")
-                axes["param_importance"].set_title("Parameter Importance")
-                axes["param_importance"].set_ylabel("Importance")
-            else:
-                axes["param_importance"].text(
-                    0.5, 0.5, "No importance computed", ha="center", va="center"
-                )
-        except Exception as e:
-            axes["param_importance"].text(
-                0.5, 0.5, f"Error: {e}", ha="center", va="center"
-            )
-    else:
-        axes["param_importance"].text(
-            0.5, 0.5, "Not enough data", ha="center", va="center"
-        )
-
-    axes["parallel_coords"].clear()
-    for i in range(len(tn)):
-        norm_s = sv[i]
-        norm_o = od[i]
-        norm_h = (hl[i] - 64) / (512 - 64)
-        axes["parallel_coords"].plot(
-            [0, 1, 2], [norm_s, norm_o, norm_h], marker="o", alpha=0.5
-        )
-    axes["parallel_coords"].set_xticks([0, 1, 2])
-    axes["parallel_coords"].set_xticklabels(
-        ["Sensitivity", "Onset Delta", "Hop Length"]
-    )
-    axes["parallel_coords"].set_title("Parallel Coordinates")
-
-    axes["slice1"].clear()
-    axes["slice1"].scatter(sv, sc, color="red")
-    axes["slice1"].set_title("Sensitivity vs Score")
-    axes["slice1"].set_xlabel("Sensitivity")
-    axes["slice1"].set_ylabel("Score")
-
-    axes["slice2"].clear()
-    axes["slice2"].scatter(od, sc, color="blue")
-    axes["slice2"].set_title("Onset Delta vs Score")
-    axes["slice2"].set_xlabel("Onset Delta")
-    axes["slice2"].set_ylabel("Score")
-
-    axes["slice3"].clear()
-    axes["slice3"].scatter(hl, sc, color="green")
-    axes["slice3"].set_title("Hop Length vs Score")
-    axes["slice3"].set_xlabel("Hop Length")
-    axes["slice3"].set_ylabel("Score")
-
-    axes["contour"].clear()
-    if len(tn) > 5:
-        x = np.array(sv)
-        y = np.array(od)
-        z = np.array(sc)
-        try:
-            cont = axes["contour"].tricontourf(x, y, z, levels=14, cmap="viridis")
-            if not contour_cb:
-                contour_cb = plt.gcf().colorbar(cont, ax=axes["contour"])
-            else:
-                contour_cb.update_normal(cont)
-        except Exception as e:
-            axes["contour"].text(0.5, 0.5, f"Error: {e}", ha="center", va="center")
-        axes["contour"].set_title("Contour Plot (Sensitivity, Onset Delta)")
-        axes["contour"].set_xlabel("Sensitivity")
-        axes["contour"].set_ylabel("Onset Delta")
-    else:
-        axes["contour"].text(0.5, 0.5, "Not enough data", ha="center", va="center")
-
-    axes["heatmap"].clear()
-    sc_plot = axes["heatmap"].scatter(sv, od, c=sc, cmap="coolwarm", s=100)
-    axes["heatmap"].set_title("Hyperparameter Heatmap")
-    axes["heatmap"].set_xlabel("Sensitivity")
-    axes["heatmap"].set_ylabel("Onset Delta")
-    if not heatmap_colorbar:
-        heatmap_colorbar = plt.gcf().colorbar(
-            sc_plot, ax=axes["heatmap"], label="Score (red=high, blue=low)"
-        )
-    else:
-        heatmap_colorbar.update_normal(sc_plot)
-
+    update_score_evolution(axes["score_evolution"], tn, sc)
+    update_param_importance(axes["param_importance"], study)
+    update_parallel_coords(axes["parallel_coords"], tn, sv, od, hl)
+    update_slice_plots(axes, sv, od, hl, sc)
+    contour_cb = update_contour_plot(axes["contour"], sv, od, sc, contour_cb)
+    global heatmap_colorbar
+    heatmap_colorbar = update_heatmap(axes["heatmap"], sv, od, sc, heatmap_colorbar)
     plt.gcf().canvas.draw_idle()
+    
     return contour_cb
 
 

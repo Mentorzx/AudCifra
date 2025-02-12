@@ -1,8 +1,8 @@
 audio_folder: data/musics/
 chord_detection:
-  hop_length: 448
-  onset_delta: 0.11
-  sensitivity: 0.96
+  hop_length: 192
+  onset_delta: 0.16
+  sensitivity: 0.13
 logger:
   console_level: WARNING
   file_level: DEBUG
@@ -11,4 +11,4 @@ noise_removal:
   level: 0.4
 output_folder: data/outputs/
 transcription:
-  model: medium
+  model: small
