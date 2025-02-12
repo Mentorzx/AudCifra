@@ -14,11 +14,11 @@ def detect_chord_segments(
     Detects chord segments in the audio based on chroma features and onset detection.
     Each segment is returned as a dictionary with keys 'chord', 'start', and 'end' (times in seconds).
 
-    :param audio_data: Dictionary with 'data' and 'sr'.
+    :param audio_data: Dictionary with keys 'data' and 'sr'.
     :param sensitivity: Similarity threshold for chord detection.
     :param onset_delta: Delta parameter for onset detection.
     :param hop_length: Hop length for chroma extraction.
-    :return: List of chord segment dictionaries.
+    :return: List of chord segment dictionaries. Segments with low similarity (i.e. "N.C.") are omitted.
     """
     y = audio_data["data"]
     sr = audio_data["sr"]
@@ -38,8 +38,8 @@ def detect_chord_segments(
         avg_chroma = np.mean(segment_chroma, axis=1)
         norm = np.linalg.norm(avg_chroma) + 1e-6
         avg_chroma_norm = avg_chroma / norm
-        best_chord = "N.C."
         best_similarity = 0
+        best_chord = None
         for chord, template in templates.items():
             template_norm = template / (np.linalg.norm(template) + 1e-6)
             similarity = np.dot(avg_chroma_norm, template_norm)
@@ -47,8 +47,10 @@ def detect_chord_segments(
                 best_similarity = similarity
                 best_chord = chord
         if best_similarity < sensitivity:
-            best_chord = "N.C."
-        start_time = start_frame * hop_length / sr
-        end_time = end_frame * hop_length / sr
-        segments.append({"chord": best_chord, "start": start_time, "end": end_time})
+            continue  # Skip segment if similarity is too low (treated as no chord detected)
+        start_time_sec = start_frame * hop_length / sr
+        end_time_sec = end_frame * hop_length / sr
+        segments.append(
+            {"chord": best_chord, "start": start_time_sec, "end": end_time_sec}
+        )
     return segments

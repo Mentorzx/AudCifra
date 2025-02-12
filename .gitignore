@@ -2,6 +2,8 @@
 /data/musics/*
 /data/outputs/*
 **/__pycache__/
+/reference/*
+/data/all musics
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
