@@ -31,11 +31,8 @@ def load_config(config_path: str) -> dict:
 def process_music(file_path: str, config: dict, logger) -> None:
     """
     Processes a music file by extracting audio data, performing optional noise removal,
-    transcribing the audio, detecting chord segments, aligning chords to the corresponding phrases,
+    transcribing the audio, detecting chord segments, aligning chords to corresponding phrases,
     and generating a Word document with the chord and lyric data.
-
-    This function also removes chord segments detected before the start of the first phrase
-    (i.e. the intro is ignored).
 
     Parameters:
         file_path (str): The path to the music file.
@@ -79,6 +76,7 @@ def process_music(file_path: str, config: dict, logger) -> None:
                 "end": phrase["end"],
             }
         )
+    merge_instrumental = config.get("merge_instrumental", True)
     assigned = []
     for phrase in phrases:
         assigned.extend(
@@ -87,7 +85,7 @@ def process_music(file_path: str, config: dict, logger) -> None:
             if phrase["start"] <= seg["start"] <= phrase["end"]
         )
     unassigned = [seg for seg in chord_segments if seg not in assigned]
-    if phrase_chord_data and unassigned:
+    if merge_instrumental and phrase_chord_data and unassigned:
         last_phrase = phrase_chord_data[-1]
         extra_line = align_chords_to_phrase(
             {

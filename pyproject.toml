@@ -1,0 +1,42 @@
+[project]
+name = "AudCifra"
+version = "0.1.0"
+description = "A project that transforms audio into chord and lyric Word documents."
+requires-python = "3.12"
+authors = [
+  { name = "Alex Lira", email = "mentorlira@gmail.com" }
+]
+license = { text = "" }
+readme = "README.md"
+
+[project.urls]
+Repository = "https://github.com/Mentorzx/AudCifra"
+
+[tool.uv]
+packages = [
+  { include = "audio" },
+  { include = "design_patterns" },
+  { include = "doc_generator" },
+  { include = "utils" },
+]
+
+[tool.uv.dependencies]
+python = ">=3.12"
+numpy = "^1.23"
+librosa = "^0.10.0"
+pyyaml = "^6.0"
+python-docx = "^0.8.11"
+
+[tool.uv.dev.dependencies]
+deps = [
+  "pytest>=7.0,<8.0",
+  "black>=23.1,<24.0",
+  "flake8>=6.0,<7.0"
+]
+
+[tool.uv.workspace]
+members = ["AudCifra"]
+
+[build-system]
+requires = ["uv-core>=0.1.0"]
+build-backend = "uv.core.build"

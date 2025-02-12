@@ -3,10 +3,11 @@ import numpy as np
 
 def get_chord_templates() -> dict:
     """
-    Generates chord templates for various chord types (maj, min, 7, maj7, m7, sus2, sus4, add9, madd9, 9).
-    Each template is a binary vector of length 12 corresponding to the 12 pitch classes.
+    Generates chord templates for various chord types including major, minor, dominant 7, major 7, minor 7,
+    sus2, sus4, add9, madd9, and 9 chords. Each template is a binary vector of length 12 corresponding to the 12 pitch classes.
 
-    :return: Dictionary mapping chord names to their binary templates.
+    Returns:
+        dict: A dictionary mapping chord names (e.g., "C", "Cm", "G7", "Fmaj7") to their binary templates as numpy arrays.
     """
     templates = {}
     notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
