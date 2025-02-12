@@ -1,8 +1,8 @@
 audio_folder: data/musics/
 chord_detection:
   hop_length: 256
-  onset_delta: 0.08
-  sensitivity: 0.58
+  onset_delta: 0.2
+  sensitivity: 0.2
 logger:
   console_level: WARNING
   file_level: DEBUG

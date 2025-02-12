@@ -147,7 +147,7 @@ class ScoreEvaluator:
         avg_ratio = sum(ratios) / len(ratios) if ratios else 0
         false_positives = max(0, len(generated) - len(reference))
         false_negatives = max(0, len(reference) - len(generated))
-        score = (avg_ratio) - (2 * false_positives) - (2 * false_negatives)
+        score = avg_ratio - false_positives - false_negatives
         logger.info(f"Reference chords: {reference}")
         logger.info(f"Generated chords: {generated}")
         logger.info(
