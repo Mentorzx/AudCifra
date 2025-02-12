@@ -13,6 +13,7 @@ import optuna
 import yaml
 from docx import Document
 from fuzzywuzzy import fuzz
+from scipy.interpolate import make_interp_spline
 
 contour_colorbar = None
 heatmap_colorbar = None
@@ -142,16 +143,15 @@ class ScoreEvaluator:
         """
         if not reference or not generated:
             return -100.0
-        correct_matches = sum(
-            fuzz.ratio(r, g) > 75 for r, g in zip(reference, generated)
-        )
+        ratios = [fuzz.ratio(r, g) for r, g in zip(reference, generated)]
+        avg_ratio = sum(ratios) / len(ratios) if ratios else 0
         false_positives = max(0, len(generated) - len(reference))
         false_negatives = max(0, len(reference) - len(generated))
-        score = (3 * correct_matches) - (2 * false_positives) - (2 * false_negatives)
+        score = (avg_ratio) - (2 * false_positives) - (2 * false_negatives)
         logger.info(f"Reference chords: {reference}")
         logger.info(f"Generated chords: {generated}")
         logger.info(
-            f"Score Breakdown - Correct: {correct_matches}, False Positives: {false_positives}, False Negatives: {false_negatives}"
+            f"Score Breakdown - Correct: {avg_ratio}, False Positives: {false_positives}, False Negatives: {false_negatives}"
         )
         logger.info(f"Final Score: {score:.2f}")
         return score
@@ -283,10 +283,34 @@ def update_score_evolution(ax, trial_numbers, scores):
         scores (list): List of corresponding score values.
     """
     ax.clear()
-    ax.plot(trial_numbers, scores, marker="o")
+    trial_numbers = np.array(trial_numbers)
+    scores = np.array(scores)
+
+    if len(trial_numbers) > 1:
+        _sort_interpolation(trial_numbers, scores, ax)
+    else:
+        ax.plot(trial_numbers, scores, marker="o", color="blue")
     ax.set_title("Score Evolution")
     ax.set_xlabel("Trial")
     ax.set_ylabel("Score")
+    ax.grid(True)
+    ax.legend()
+
+
+def _sort_interpolation(trial_numbers, scores, ax):
+    sort_idx = np.argsort(trial_numbers)
+    trial_numbers_sorted = trial_numbers[sort_idx]
+    scores_sorted = scores[sort_idx]
+    k = 3 if len(trial_numbers_sorted) >= 4 else 1
+
+    try:
+        xnew = np.linspace(trial_numbers_sorted.min(), trial_numbers_sorted.max(), 300)
+        spl = make_interp_spline(trial_numbers_sorted, scores_sorted, k=k)
+        scores_smooth = spl(xnew)
+        ax.plot(xnew, scores_smooth, color="blue", label="Curva Suave")
+    except Exception as e:
+        ax.plot(trial_numbers_sorted, scores_sorted, color="blue", label="Linha")
+    ax.scatter(trial_numbers_sorted, scores_sorted, color="red")
 
 
 def update_param_importance(ax, study):
@@ -340,39 +364,155 @@ def update_parallel_coords(ax, trial_numbers, sv, od, hl):
     ax.set_title("Parallel Coordinates")
 
 
-def update_slice_plots(axes, sv, od, hl, scores):
+def update_slice_plots(axes, sv, od, hl, scores, score_errors=None):
     """
     Updates the slice plots showing the relationship between each hyperparameter and the score.
 
-    Three scatter plots are updated:
-      - Sensitivity vs. Score (red)
-      - Onset Delta vs. Score (blue)
-      - Hop Length vs. Score (green)
+    For each plot (Sensitivity vs. Score, Onset Delta vs. Score, and Hop Length vs. Score):
+      - Data points are plotted with error bars.
+      - A weighted polynomial regression (degree 2) is performed using the errors.
+      - A regression curve with a confidence band (calculated via error propagation) is drawn.
 
     Parameters:
-        axes (dict): Dictionary with axes for "slice1", "slice2", and "slice3".
+        axes (dict): Dictionary containing the axes for "slice1", "slice2", and "slice3".
         sv (list): List of sensitivity values.
         od (list): List of onset delta values.
         hl (list): List of hop length values.
         scores (list): List of score values.
+        score_errors (list, optional): List of errors associated with each score.
+                                       If not provided, a constant error of 1 is used for all points.
     """
+    if score_errors is None:
+        score_errors = [1.0] * len(scores)
+    deg = 3
+
+    # Plot 1: Sensitivity vs. Score
     axes["slice1"].clear()
-    axes["slice1"].scatter(sv, scores, color="red")
-    axes["slice1"].set_title("Sensitivity vs Score")
-    axes["slice1"].set_xlabel("Sensitivity")
-    axes["slice1"].set_ylabel("Score")
+    if len(sv) > 1:
+        _plot_weighted_regression(
+            axes["slice1"], sv, scores, score_errors, deg=deg, color="red"
+        )
+    _axes_hyperparams(axes, "slice1", "Sensitivity vs. Score", "Sensitivity")
 
+    # Plot 2: Onset Delta vs. Score
     axes["slice2"].clear()
-    axes["slice2"].scatter(od, scores, color="blue")
-    axes["slice2"].set_title("Onset Delta vs Score")
-    axes["slice2"].set_xlabel("Onset Delta")
-    axes["slice2"].set_ylabel("Score")
+    if len(od) > 1:
+        _plot_weighted_regression(
+            axes["slice2"], od, scores, score_errors, deg=deg, color="blue"
+        )
+    _axes_hyperparams(axes, "slice2", "Onset Delta vs. Score", "Onset Delta")
 
+    # Plot 3: Hop Length vs. Score
     axes["slice3"].clear()
-    axes["slice3"].scatter(hl, scores, color="green")
-    axes["slice3"].set_title("Hop Length vs Score")
-    axes["slice3"].set_xlabel("Hop Length")
-    axes["slice3"].set_ylabel("Score")
+    if len(hl) > 1:
+        _plot_weighted_regression(
+            axes["slice3"], hl, scores, score_errors, deg=deg, color="green"
+        )
+    _axes_hyperparams(axes, "slice3", "Hop Length vs. Score", "Hop Length")
+
+
+def _plot_weighted_regression(ax, x_data, scores, errors, deg=3, color="red"):
+    """
+    Performs a weighted polynomial regression on the provided data and plots the data points,
+    regression curve, and its confidence band on the given axis.
+
+    The function sorts the x_data, applies a weighted polynomial regression (using np.polyfit),
+    and calculates the confidence band using error propagation through the covariance matrix.
+
+    Parameters:
+        ax (matplotlib.axes.Axes): The axis on which to plot.
+        x_data (list or array-like): The hyperparameter values to be used as x-coordinates.
+        scores (list or array-like): The score values corresponding to each x_data value.
+        errors (list or array-like): The error values associated with each score.
+        deg (int, optional): The degree of the polynomial to fit. Defaults to 3.
+        color (str, optional): The color used for the plot elements. Defaults to "red".
+
+    Returns:
+        None
+    """
+    x_arr = np.array(x_data)
+    scores_arr = np.array(scores)
+    errors_arr = np.array(errors)
+    sort_idx = np.argsort(x_arr)
+    x_sorted = x_arr[sort_idx]
+    scores_sorted = scores_arr[sort_idx]
+    errors_sorted = errors_arr[sort_idx]
+    try:
+        fit_params, cov = np.polyfit(
+            x_sorted, scores_sorted, deg=deg, w=1.0 / errors_sorted, cov=True
+        )
+        fit_poly = np.poly1d(fit_params)
+        x_fit = np.linspace(x_sorted.min(), x_sorted.max(), 300)
+        y_fit = fit_poly(x_fit)
+        y_fit_err = compute_confidence_band(x_fit, cov, deg)
+        ax.errorbar(
+            x_sorted,
+            scores_sorted,
+            yerr=errors_sorted,
+            fmt="o",
+            capsize=5,
+            color=color,
+            label="Data",
+        )
+        ax.plot(x_fit, y_fit, color=color, label=f"Weighted Regression (deg={deg})")
+        ax.fill_between(
+            x_fit,
+            y_fit - y_fit_err,
+            y_fit + y_fit_err,
+            color=color,
+            alpha=0.2,
+            label="Confidence Band",
+        )
+    except Exception as e:
+        ax.scatter(x_sorted, scores_sorted, color=color, label="Data")
+
+
+def _axes_hyperparams(axes, key, title, xlabel):
+    """
+    Configures the axis attributes (title, labels, grid, and legend) for the hyperparameter plot.
+
+    Parameters:
+        axes (dict): Dictionary containing the axes.
+        key (str): Key of the axis to be configured (e.g., "slice1").
+        title (str): Title of the plot.
+        xlabel (str): Label for the x-axis.
+    """
+    axes[key].set_title(title)
+    axes[key].set_xlabel(xlabel)
+    axes[key].set_ylabel("Score")
+    axes[key].grid(True)
+    axes[key].legend()
+
+
+def compute_poly_error(x, cov, deg):
+    """
+    Computes the error propagation for a polynomial of given degree at value x.
+
+    Parameters:
+        x (float): The point at which to evaluate the error.
+        cov (ndarray): Covariance matrix of the polynomial coefficients.
+        deg (int): Degree of the polynomial.
+
+    Returns:
+        float: The propagated error at x.
+    """
+    basis = np.array([x**p for p in range(deg, -1, -1)])
+    return np.sqrt(np.dot(basis, np.dot(cov, basis)))
+
+
+def compute_confidence_band(x_values, cov, deg):
+    """
+    Computes the confidence band (errors) for an array of x values.
+
+    Parameters:
+        x_values (array-like): Points at which to evaluate the error.
+        cov (ndarray): Covariance matrix of the polynomial coefficients.
+        deg (int): Degree of the polynomial.
+
+    Returns:
+        ndarray: Array of propagated errors corresponding to each x.
+    """
+    return np.array([compute_poly_error(x, cov, deg) for x in x_values])
 
 
 def update_contour_plot(ax, sv, od, scores, contour_cb):
