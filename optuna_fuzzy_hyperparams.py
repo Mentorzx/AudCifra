@@ -130,18 +130,18 @@ class ScoreEvaluator:
     def evaluate(reference: list, generated: list) -> float:
         """
         Evaluates the score based on the similarity between reference and generated chords.
-        
+
         The score is computed on a scale from 0 to 100. A perfect match—where the generated chord sequence
         has the same number of chords as the reference and each chord is identical and in the same position—
         yields a score of 100. Matching chords in the same position are weighted more heavily than matching
         only the count. The final score is the product of the average fuzzy similarity (using fuzz.ratio)
         and a length factor (the ratio of the smaller to the larger list length). If either list is empty,
         the function returns -100.
-        
+
         Parameters:
             reference (list): List of reference chords.
             generated (list): List of generated chords.
-        
+
         Returns:
             float: The computed score (minimum 0, maximum 100), or -100 if either list is empty.
         """
@@ -621,7 +621,7 @@ def run_optimization(study, optimization_runner, n_trials, callback_fn):
     )
 
 
-def main():
+def main(n_trials: int = 150):
     """
     Main function to execute the optimization process and update plots in real-time.
 
@@ -641,11 +641,10 @@ def main():
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler()
     )
-
     plt.ion()
     fig, axes = create_plots()
     try:
-        fig.canvas.manager.window.wm_attributes("-topmost", 0) # type: ignore
+        fig.canvas.manager.window.wm_attributes("-topmost", 0)  # type: ignore
     except Exception as e:
         logger.warning(f"Could not set window attributes: {e}")
 
@@ -655,10 +654,7 @@ def main():
 
     fig.canvas.mpl_connect("close_event", on_close)
     plt.tight_layout()
-
-    n_trials = 150
     start_time = time.time()
-
     hyper_data = {
         "trial_numbers": [],
         "scores": [],
