@@ -92,7 +92,7 @@ class ConfigManager:
 
 class ChordExtractor:
     """
-    Extracts chords from a DOCX file using a regular expression.
+    Extracts chords from a DOCX file using a refined regular expression.
     """
 
     CHORD_PATTERN = re.compile(
@@ -100,9 +100,23 @@ class ChordExtractor:
     )
 
     @classmethod
+    def is_chord_line(cls, line: str) -> bool:
+        """
+        Determines whether a line consists only of chords.
+
+        Args:
+            line (str): A single line from the document.
+
+        Returns:
+            bool: True if the line appears to contain only chords, False otherwise.
+        """
+        words = line.split()
+        return all(cls.CHORD_PATTERN.fullmatch(word) for word in words)
+
+    @classmethod
     def extract_chords_from_docx(cls, file_path: str) -> list:
         """
-        Extract chords from the specified DOCX file.
+        Extracts chords from a DOCX file, ensuring only valid chord lines are processed.
 
         Args:
             file_path (str): Path to the DOCX file.
@@ -116,8 +130,13 @@ class ChordExtractor:
         doc = Document(file_path)
         chords = []
         for para in doc.paragraphs:
-            matches = cls.CHORD_PATTERN.findall(para.text)
-            chords.extend(matches)
+            lines = para.text.splitlines()
+            for line in lines:
+                line = line.strip()
+                if cls.is_chord_line(line):
+                    matches = cls.CHORD_PATTERN.findall(line)
+                    chords.extend(matches)
+
         return chords
 
 
@@ -390,7 +409,7 @@ def update_slice_plots(axes, sv, od, hl, scores, score_errors=None):
     """
     if score_errors is None:
         score_errors = [1.0] * len(scores)
-    deg = 3
+    deg = 4
     axes["slice1"].clear()
     if len(sv) > 1:
         _plot_weighted_regression(
@@ -621,7 +640,7 @@ def run_optimization(study, optimization_runner, n_trials, callback_fn):
     )
 
 
-def main(n_trials: int = 150):
+def main(path: str, n_trials: int = 150):
     """
     Main function to execute the optimization process and update plots in real-time.
 
@@ -633,7 +652,7 @@ def main(n_trials: int = 150):
 
     config_path = "config.yml"
     results_folder = "data/outputs/"
-    reference_file = "data/reference/Braço Forte.docx"
+    reference_file = path
     config_manager = ConfigManager(config_path)
     optimization_runner = OptimizationRunner(
         config_manager, results_folder, reference_file
@@ -674,12 +693,9 @@ def main(n_trials: int = 150):
         hyper_data["times"].append(time.time() - start_time if start_time else 0.0)
         nonlocal contour_cb
         contour_cb = update_all_plots(axes, study, trial, contour_cb, hyper_data)
-        logger.info(
-            f"Trial {trial.number} - Score: {trial.value:.2f} | Parameters: {trial.params}"
-        )
         best = study.best_trial
         logger.info(
-            f"Best Trial so far: {best.number} - Score: {best.value:.2f} | Parameters: {best.params}"
+            f"Best Trial: {best.number} - Score: {best.value:.2f} | Parameters: {best.params}"
         )
 
     opt_thread = threading.Thread(
@@ -713,4 +729,4 @@ def main(n_trials: int = 150):
 
 
 if __name__ == "__main__":
-    main()
+    main(path="data/reference/Banquete-Pascal.docx")

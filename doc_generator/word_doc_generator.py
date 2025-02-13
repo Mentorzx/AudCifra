@@ -6,7 +6,7 @@ def align_chords_to_phrase(phrase: dict, chord_segments: list) -> str:
     """
     Given a phrase (with 'start', 'end', and 'text') and a list of chord segments (with 'start' and 'chord')
     that fall within the phrase interval, returns a string (of the same length as the phrase text) with chord labels
-    positioned proportionally.
+    positioned proportionally, ensuring at least one space between chords.
 
     :param phrase: Dictionary with keys 'start', 'end', and 'text'.
     :param chord_segments: List of dictionaries with keys 'start' and 'chord'.
@@ -18,16 +18,22 @@ def align_chords_to_phrase(phrase: dict, chord_segments: list) -> str:
         duration = 1
     L = len(text)
     chord_line = [" "] * L
+    last_pos = -2
     for seg in chord_segments:
         seg_start = seg["start"]
         if seg_start < phrase["start"] or seg_start > phrase["end"]:
             continue
         rel = (seg_start - phrase["start"]) / duration
         pos = int(rel * (L - 1))
+        if pos <= last_pos + 1:
+            pos = last_pos + 2
         chord_label = seg["chord"]
         for j, char in enumerate(chord_label):
-            if pos + j < L:
-                chord_line[pos + j] = char
+            index = pos + j
+            if index < L:
+                chord_line[index] = char
+        last_pos = pos + len(chord_label)
+
     return "".join(chord_line)
 
 

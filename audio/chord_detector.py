@@ -143,7 +143,7 @@ class ChordDetector:
         self.smoothing = smoothing
         self.epsilon = EPSILON
 
-        self.templates = get_chord_templates()
+        self.templates = get_chord_templates(False, True)
         self.classifier = ChordClassifier(None) if self.use_classifier else None
 
         self.representation_funcs: Dict[str, Any] = {
@@ -215,13 +215,11 @@ class ChordDetector:
         Returns:
             Tuple[Optional[str], float]: The chord label and its similarity score.
         """
-        if self.use_classifier and self.classifier is not None:
+        if self.use_classifier and self.classifier:
             return self.classifier.predict(rep_norm)
-
         best_similarity = -np.inf
         best_chord: Optional[str] = None
         sim_func = self.similarity_funcs.get(self.similarity_metric, cosine_similarity)
-
         for chord, template in self.templates.items():
             template_norm = self._normalize(template)
             similarity = sim_func(rep_norm, template_norm)
@@ -282,13 +280,15 @@ class ChordDetector:
             chord_label, similarity = self._classify_chord(rep_norm)
             if not chord_label or similarity < self.sensitivity:
                 continue
+            if detected_segments and detected_segments[-1]["chord"] == chord_label:
+                continue
             start_time = start_frame * self.hop_length / sr
             end_time = end_frame * self.hop_length / sr
             detected_segments.append(
                 {"chord": chord_label, "start": start_time, "end": end_time}
             )
-        if self.smoothing and len(detected_segments) >= 3:
-            detected_segments = self.smooth_chord_sequence(detected_segments)
+        # if self.smoothing and len(detected_segments) >= 3:
+        #     detected_segments = self.smooth_chord_sequence(detected_segments)
 
         return detected_segments
 

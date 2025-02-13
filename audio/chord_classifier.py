@@ -36,7 +36,7 @@ class ChordClassifier:
         """
         from .chord_templates import get_chord_templates
 
-        templates = get_chord_templates()
+        templates = get_chord_templates(False, True)
         labels = []
         X = []
         for chord, template in templates.items():
