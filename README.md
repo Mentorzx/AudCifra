@@ -1,72 +1,94 @@
-# Audio Chord Transcriber
+# AudCifra
 
-**Audio Chord Transcriber** is a project that transforms audio files into Word documents containing chords and lyrics. It performs audio transcription, detects chord segments, aligns chords to corresponding phrases, and generates a final document with both chord and lyric information.
+AudCifra is an audio-to-document pipeline that transcribes songs, detects chord segments and exports a Word document with aligned lyrics and harmony.
 
-## Features
+The project combines audio preprocessing, transcription, chord detection and document generation in a single workflow. It is a good example of practical applied AI code where the interesting part is not just the model, but the whole pipeline from raw input to usable output.
 
-- **Audio Extraction:**  
-  Loads and processes audio files (`.mp3`, `.wav`).
+## What it does
 
-- **Optional Noise Removal:**  
-  Enhances audio quality by removing unwanted noise.
+- loads `.mp3` and `.wav` files
+- optionally removes noise before analysis
+- transcribes vocals into text segments
+- detects chord segments from the audio
+- aligns chords to lyric phrases
+- generates `.docx` output files
+- processes multiple files concurrently with `asyncio` and `ThreadPoolExecutor`
 
-- **Audio Transcription:**  
-  Converts audio into transcription segments.
+## Stack
 
-- **Chord Detection:**  
-  Analyzes the audio to identify chord segments.
+- Python 3.12
+- librosa
+- PyYAML
+- python-docx
+- asyncio
+- custom modules for audio processing and document generation
 
-- **Chord & Lyric Alignment:**  
-  Associates the detected chords with the respective phrases in the song.
+## Project structure
 
-- **Word Document Generation:**  
-  Creates a `.docx` file with aligned chords and lyrics.
-
-- **Flexible Configuration:**  
-  Choose whether to merge instrumental (non-vocal) segments with the previous vocal segment or ignore them, via the `config.yml`.
-
-- **Parallel Processing:**  
-  Utilizes `asyncio` and `ThreadPoolExecutor` to process multiple files concurrently.
-
-## Requirements
-
-- Python 3.12 or higher
-- Dependencies as listed in `pyproject.toml`
-- [Ultra Violet (uv)](https://astral.sh/uv/) for environment and dependency management
+```text
+audio/               # transcription, listening and chord detection
+doc_generator/       # Word export helpers
+utils/               # logging and shared utilities
+config.yml           # runtime configuration
+main.py              # pipeline entrypoint
+```
 
 ## Installation
 
-1. **Clone the Repository:**
+### Clone the repository
 
-   ```bash
-   git clone https://github.com/Mentorzx/AudCifra
-   cd AudCifra
-   ```
+```bash
+git clone https://github.com/Mentorzx/AudCifra
+cd AudCifra
+```
 
-2. **Install Ultra Violet (uv):**
+### Install dependencies with uv
 
-    - curl -LsSf https://astral.sh/uv/install.sh | sh
-    Note: On Windows, use Git Bash or WSL to execute the command above.
-
-3. **uv install**
+```bash
+uv sync
+```
 
 ## Configuration
-    The project uses a config.yml file to manage various settings. Below is an example configuration:
 
-    ```yaml
-    audio_folder: "data/musics/"
-    output_folder: "data/outputs/"
-    merge_instrumental: true
-    transcription:
-        model: "small"
-    logger:
-        console_level: "WARNING"
-        file_level: "DEBUG"
-    noise_removal:
-        enabled: true
-        level: 0.4
-    chord_detection:
-        sensitivity: 0.9
-        onset_delta: 0.5
-        hop_length: 512
-    ```
+The pipeline is driven by `config.yml`.
+
+Example:
+
+```yaml
+audio_folder: "data/musics/"
+output_folder: "data/outputs/"
+merge_instrumental: true
+transcription:
+  model: "small"
+logger:
+  console_level: "WARNING"
+  file_level: "DEBUG"
+noise_removal:
+  enabled: true
+  level: 0.4
+chord_detection:
+  sensitivity: 0.9
+  onset_delta: 0.5
+  hop_length: 512
+```
+
+## Run
+
+```bash
+uv run python main.py
+```
+
+Input files are read from the configured `audio_folder`, and generated `.docx` files are written to the configured `output_folder`.
+
+## Why it matters
+
+AudCifra shows an end-to-end pipeline mindset:
+
+- raw signal processing
+- transcription and alignment logic
+- concurrent execution
+- structured document output instead of just a demo prediction
+
+## Contact
+
+Public profile: [github.com/Mentorzx](https://github.com/Mentorzx)
